@@ -1,0 +1,503 @@
+library(tidyverse)
+library(ggplot2)
+library(plotly)
+library(gganimate)
+library(gifski)
+library(gghighlight)
+library(geojsonio)
+library(sf)
+library(RColorBrewer)
+library(rgdal)
+library(broom)
+library(rgeos)
+library(mapproj)
+library(viridis)
+library(webr)
+library(DT)
+library(here)
+library(rio)
+
+probation2010 <- import(here("data", "34321-0001-Data.tsv"))
+probation2011 <- import(here("data", "34717-0001-Data.tsv"))
+probation2012 <- import(here("data", "35256-0001-Data.tsv"))
+probation2013 <- import(here("data", "35631-0001-Data.tsv"))
+probation2014 <- import(here("data", "36343-0001-Data.tsv"))
+probation2015 <- import(here("data", "36618-0001-Data.tsv"))
+probation2016 <- import(here("data", "37459-0001-Data.tsv"))
+probation2017 <- import(here("data", "37482-0001-Data.tsv"))
+probation2018 <- import(here("data", "38057-0001-Data.tsv"))
+
+population1 <- import(here("data", "nst-est2019-01.xlsx - NST01.csv"))
+
+jails2010 <- import(here("data", "31261-0001-Data.tsv"))
+jails2011 <- import(here("data", "33722-0001-Data.tsv"))
+jails2012 <- import(here("data", "34884-0001-Data.tsv"))
+jails2013 <- import(here("data", "35517-0001-Data.tsv"))
+jails2014 <- import(here("data", "36274-0001-Data.tsv"))
+jails2015 <- import(here("data", "36760-0001-Data.tsv"))
+jails2016 <- import(here("data", "37135-0001-Data.tsv"))
+jails2017 <- import(here("data", "37373-0001-Data.tsv"))
+jails2018 <- import(here("data", "37392-0001-Data.tsv"))
+
+prisons <- import(here("data", "Prisoners - Sheet1.tsv"))
+
+stategov2010 <- import(here("data", "State Legislature Partisanship - 2010.csv"))
+stategov2011 <- import(here("data", "State Legislature Partisanship - 2011.csv"))
+stategov2012 <- import(here("data", "State Legislature Partisanship - 2012.csv"))
+stategov2013 <- import(here("data", "State Legislature Partisanship - 2013.csv"))
+stategov2014 <- import(here("data", "State Legislature Partisanship - 2014.csv"))
+stategov2015 <- import(here("data", "State Legislature Partisanship - 2015.csv"))
+stategov2016 <- import(here("data", "State Legislature Partisanship - 2016.csv"))
+stategov2017 <- import(here("data", "State Legislature Partisanship - 2017.csv"))
+stategov2018 <- import(here("data", "State Legislature Partisanship - 2018.csv"))
+
+############################### FORMAT TABLES #################################
+# Format population1
+population1 <- slice(population1, c(10:60))
+colnames(population1) <- c("state", "census", "estimate", "2010", "2011", "2012", "2013", "2014", "2015", "2016", "2017", "2018", "2019")
+population1 <- select(population1, "state", "2010":"2018")
+population1 <- gather(population1, key="year", value="population", 2:10)
+population1$population <- population1$population %>%
+  str_remove_all(",") %>%
+  as.numeric()
+population1$state <- str_remove(population1$state, pattern = ".")
+
+# Format Probation Tables
+bind_tables <- function(list, vector1, vector2) {
+  start_column <- list[[1]][,vector1]
+  count <- 2010
+  for(table in 1:length(list)) {
+    new_table <- list[[table]][,vector2]
+    start_column <- cbind(start_column, new_table)
+    start_column <- rename_at(start_column, vars(vector2), ~paste0(., "_", count))
+    count <- count + 1
+  }
+  start_column
+}
+
+probation_tables <- list(probation2010, probation2011, probation2012, 
+                         probation2013, probation2014, probation2015, 
+                         probation2016, probation2017, probation2018)
+probation_all <- bind_tables(probation_tables, c("STATE", "STATEID"), 
+                             c("TOTBEG", "TOTOFF", "DMVIOL", "SXASLT", "OTHVIOL", 
+                               "PROPERTY", "DRUG", "DUI", "TRAF", "OTHOFF", "OFFUNK"))
+probation_all[probation_all == -9] <- NA
+probation_all[probation_all == -8] <- NA
+probation_all <- probation_all %>% subset(STATEID != 0) %>%
+  rename_at(vars("STATE"), ~ paste0(.,"_ABBR"))
+
+# Format Jail Tables
+jails_recode <- tibble(STATE_NAME = unique(population1$state), NUMS = 1:51, STATE_ABBR = probation_all$STATE_ABBR)
+jails2010 <- left_join(jails2010, jails_recode, by = c("state" = "NUMS"))
+jails2011 <- left_join(jails2011, jails_recode, by = c("state" = "NUMS"))
+jails2012 <- left_join(jails2012, jails_recode, by = c("state" = "NUMS"))
+jails2013 <- left_join(jails2013, jails_recode, by = c("STATE" = "STATE_ABBR"))
+jails2014 <- left_join(jails2014, jails_recode, by = c("STATE" = "STATE_ABBR"))
+jails2015 <- left_join(jails2015, jails_recode, by = c("STATE" = "NUMS"))
+jails2016 <- left_join(jails2016, jails_recode, by = c("STATE" = "NUMS"))
+jails2017 <- left_join(jails2017, jails_recode, by = c("STATE" = "NUMS"))
+jails2018 <- left_join(jails2018, jails_recode, by = c("STATE" = "NUMS"))
+
+names(jails2010) <- toupper(names(jails2010))
+names(jails2011) <- toupper(names(jails2011))
+names(jails2012) <- toupper(names(jails2012))
+jails2010 <- rename_at(jails2010, vars("FINALWEIGHT"), ~paste0("FINALWT"))
+jails2011 <- rename_at(jails2011, vars("FINALWEIGHT"), ~paste0("FINALWT"))
+jails2012 <- rename_at(jails2012, vars("FINALWEIGHT"), ~paste0("FINALWT"))
+jails2013 <- rename_at(jails2013, vars("WEIGHT"), ~paste0("FINALWT"))
+jails2014 <- rename_at(jails2014, vars("WEIGHT"), ~paste0("FINALWT"))
+
+jails2010 <- jails2010 %>% mutate(TCONFPOP = FINALWT * CONFPOP, TNCONPOP = FINALWT * NCONPOP)
+jails2011 <- jails2011 %>% mutate(TCONFPOP = FINALWT * CONFPOP, TNCONPOP = FINALWT * NCONPOP)
+jails2012 <- jails2012 %>% mutate(TCONFPOP = FINALWT * CONFPOP, TNCONPOP = FINALWT * NCONPOP)
+jails2013 <- jails2013 %>% mutate(TCONFPOP = FINALWT * CONFPOP, TNCONPOP = FINALWT * NCONPOP)
+jails2014 <- jails2014 %>% mutate(TCONFPOP = FINALWT * CONFPOP, TNCONPOP = FINALWT * NCONPOP)
+jails2015 <- jails2015 %>% mutate(TCONFPOP = FINALWT * CONFPOP, TNCONPOP = FINALWT * NCONPOP)
+jails2016 <- jails2016 %>% mutate(TCONFPOP = FINALWT * CONFPOP, TNCONPOP = FINALWT * NCONPOP)
+jails2017 <- jails2017 %>% mutate(TCONFPOP = FINALWT * CONFPOP, TNCONPOP = FINALWT * NCONPOP)
+jails2018 <- jails2018 %>% mutate(TCONFPOP = FINALWT * CONFPOP, TNCONPOP = FINALWT * NCONPOP)
+
+jails2010_grouped <- jails2010 %>% group_by(STATE_NAME) %>% summarise_if(is.numeric, list(sum=sum))
+jails2011_grouped <- jails2011 %>% group_by(STATE_NAME) %>% summarise_if(is.numeric, list(sum=sum))
+jails2012_grouped <- jails2012 %>% group_by(STATE_NAME) %>% summarise_if(is.numeric, list(sum=sum))
+jails2013_grouped <- jails2013 %>% group_by(STATE_NAME) %>% summarise_if(is.numeric, list(sum=sum))
+jails2014_grouped <- jails2014 %>% group_by(STATE_NAME) %>% summarise_if(is.numeric, list(sum=sum))
+jails2015_grouped <- jails2015 %>% group_by(STATE_NAME) %>% summarise_if(is.numeric, list(sum=sum))
+jails2016_grouped <- jails2016 %>% group_by(STATE_NAME) %>% summarise_if(is.numeric, list(sum=sum))
+jails2017_grouped <- jails2017 %>% group_by(STATE_NAME) %>% summarise_if(is.numeric, list(sum=sum))
+jails2018_grouped <- jails2018 %>% group_by(STATE_NAME) %>% summarise_if(is.numeric, list(sum=sum))
+
+jails_tables <- list(jails2010_grouped, jails2011_grouped, jails2012_grouped,
+                     jails2013_grouped, jails2014_grouped, jails2015_grouped,
+                     jails2016_grouped, jails2017_grouped, jails2018_grouped)
+
+
+jails_all <- bind_tables(jails_tables, c("STATE_NAME"), c("TCONFPOP_sum", "TNCONPOP_sum"))
+
+names(prisons) <- prisons[1,]
+prisons <- prisons[-1,]
+colnames(prisons)[2:10] <- paste("PRISON", colnames(prisons)[2:10], sep = "_")
+prisons <- mutate(prisons, STATE_NAME = str_to_title(prisons$State[1:50]))
+
+# Format Stategov Tables
+stategov_tables <- list(stategov2010, stategov2011, stategov2012, 
+                        stategov2013, stategov2014, stategov2015, 
+                        stategov2016, stategov2017, stategov2018)
+
+stategov_all <- bind_tables(stategov_tables, c("State"), 
+                            c("Legis. \nControl", "Gov. \nParty", "State \nControl"))
+
+stategov_all <- stategov_all %>% mutate_all(funs(str_replace(., "e Rep", "Rep"))) %>%
+  mutate_all(funs(str_replace(., "N/A", NA_character_)))
+
+stategov_unique <- select(stategov_all, start_column, starts_with("State \nControl"))
+stategov_unique <- stategov_unique %>% mutate(SWING = case_when(
+  rowSums(stategov_unique == "Rep") >= 7 ~ "Republican",
+  rowSums(stategov_unique == "Dem") >= 7 ~ "Democrat",
+  rowSums(stategov_unique == "Rep") > 1 & rowSums(stategov_unique == "Dem") > 1 ~ "Swing",
+  TRUE ~ "Divided"
+))
+
+# Mash tables together
+population_wide <- pivot_wider(population1, names_from = "year", values_from = "population",names_prefix = "POP_" )
+probation_pop <- cbind(population_wide, probation_all)
+complete_table <- left_join(stategov_unique, jails_all, by = c("start_column" = "STATE_NAME"))
+complete_table[is.na(complete_table)] <- 0
+complete_table <- left_join(probation_pop, complete_table, by = c("state" = "start_column"))
+complete_table <- rename_at(complete_table, vars("state"), ~paste0("STATE_NAME"))
+complete_table <- left_join(complete_table, prisons, by = c("STATE_NAME" = "STATE_NAME"))
+
+
+select_table <- complete_table %>% select(STATE_NAME, STATE_ABBR, SWING, starts_with("POP_"), 
+                                          starts_with("TOTBEG"), starts_with("TCONFPOP"), 
+                                          starts_with("TNCONPOP"), starts_with("PRISON"))
+for ( col in 1:ncol(select_table)){
+  colnames(select_table)[col] <-  sub("_sum", "", colnames(select_table)[col])
+}
+rstudioapi::writeRStudioPreference("data_viewer_max_columns", 1000L)
+select_table <- select_table %>% pivot_longer(-c("STATE_NAME", "STATE_ABBR", "SWING"), names_to = c(".value", "YEAR"), names_sep="_")
+select_table <- select_table %>% 
+  mutate(PROP_SUP = (TOTBEG + TCONFPOP + TNCONPOP + PRISON) / POP * 100, 
+         ABS_SUP = TOTBEG + TCONFPOP + TNCONPOP + PRISON,
+         PROP_PROBATION = TOTBEG / POP * 100)
+
+########## Hexbin Map #############
+library(maptools)
+geo <- geojson_read("Data/us_states_hexgrid.geojson",  what = "sp")
+
+geo_fortified <- fortify(geo, region="iso3166_2")
+centers <- cbind.data.frame(data.frame(gCentroid(geo, byid=TRUE), id=geo@data$iso3166_2))
+
+my_palette <- rev(mako(6))[c(-1,-8)]
+
+select_table_2018 <- select_table %>% filter(YEAR==2018)
+select_table_2018$bin <- cut(select_table_2018$PROP_PROBATION, breaks=c(0, 0.5, 1, 2, 4), labels=c("under 0.5%", "0.5 - 0.99%", "1 - 1.99%", "2% or more"), include.lowest = TRUE )
+
+ggplot() +
+  geom_map(data=geo_fortified, map=geo_fortified, aes(x=long, y=lat, map_id=id)) +
+  geom_map(data=select_table_2018, map=geo_fortified, aes(fill=bin, map_id=STATE_ABBR)) +
+  geom_text(data=centers, aes(x=x, y=y, label=id), color="white", size=4) +
+  theme_void() +
+  scale_fill_manual(values=my_palette, name="% of population on probation", 
+                    guide = guide_legend( keyheight = unit(3, units = "mm"), keywidth=unit(18, units = "mm"), 
+                                          label.position = "bottom", title.position = 'top', nrow=1)) +
+  ggtitle( "Percent of State Population on Probation in 2018") +
+  theme_void() +
+  theme(legend.position = c(0.5, 0.85),
+        plot.title = element_text(size= 15, hjust=0.5, color = "black", 
+                                  margin = margin(b = -0.1, t = 0.4, l = 2, unit = "cm"))) +
+  coord_map()
+
+########### Probation Rates Linegraph #######
+US_avg <- select_table
+US_avg$TOTBEG <- as.numeric(US_avg$TOTBEG)
+US_avg[US_avg$STATE_ABBR == "GA" & US_avg$YEAR == 2016, "TOTBEG"] <- ((US_avg[US_avg$STATE_ABBR == "GA" & US_avg$YEAR == 2015, "TOTBEG"] + US_avg[US_avg$STATE_ABBR == "GA" & US_avg$YEAR == 2017, "TOTBEG"]) / 2)
+US_avg[US_avg$STATE_ABBR == "MI" & US_avg$YEAR == 2016, "TOTBEG"] <- ((US_avg[US_avg$STATE_ABBR == "MI" & US_avg$YEAR == 2015, "TOTBEG"] + US_avg[US_avg$STATE_ABBR == "MI" & US_avg$YEAR == 2017, "TOTBEG"]) / 2)
+US_avg <- US_avg %>% group_by(YEAR) %>% summarize(POP_SUM = sum(POP), TOTBEG_SUM = sum(TOTBEG)) %>%
+  mutate(US_AVG = TOTBEG_SUM / POP_SUM * 100, GROUP = rep("United States", 9))
+
+high_probation <- select_table %>%
+  filter(PROP_PROBATION >= 2) %>%
+  arrange(desc(PROP_PROBATION))
+high_probation <- unique(high_probation$STATE_ABBR)
+
+ggplot() +
+  geom_line(data = select_table, aes(x=YEAR, y=PROP_PROBATION, group=STATE_NAME, col=STATE_NAME), size = 0.6) +
+  gghighlight(STATE_ABBR %in% high_probation) +
+  scale_y_continuous(labels=function(x) paste0(x,"%")) +
+  geom_line(data = US_avg, aes(x=YEAR, y = US_AVG, group = GROUP), linewidth = 1, linetype="dashed") +
+  annotate(geom = "text", x = 4, y = 1.4, label = "US Average", hjust = "left") +
+  geom_label(label = "Georgia did not report \n probation data in 2016", x=8, y = 5, color ="coral") +
+  annotate(geom = "curve", color = "coral", x = 8, y = 4.8, xend = 7, yend = 4.4, 
+           curvature = .3, arrow = arrow(length = unit(2, "mm"))) +
+  labs(y="", x="", title="Percent of State Population on Probation 2010 - 2018") +
+  theme_classic() +
+  theme(plot.title = element_text(size= 15, hjust=0.5, color = "black", 
+                                  margin = margin(b = 0.3, t = 0.4, l = 1.5, unit = "cm")), 
+        legend.position = "none")
+
+############ Incarceration Rates Bargraph #####
+select_table_2018 <- filter(select_table, YEAR == 2018)
+select_table_2018$STATE_ABBR <- factor(select_table_2018$STATE_ABBR, levels = select_table_2018$STATE_ABBR[order(select_table_2018$POP)])
+
+select_table_2018 <- select_table_2018 %>% select(1:9) %>%
+  gather(key = "TYPE", value = "SUPERVISED", 6:9) %>%
+  mutate(PERC_SUP_TYPE = SUPERVISED / POP * 100)
+
+my_palette <- rev(mako(6))[c(-1,-8)]
+select_table_2018 %>%
+  ggplot(aes(x=STATE_ABBR, y=PERC_SUP_TYPE, fill= TYPE)) +
+  geom_bar(stat="identity") +
+  annotate(geom = "curve", x = 16.5, y = 1.9, xend = 15, yend = 1.45, 
+           curvature = .3, arrow = arrow(length = unit(2, "mm"))) +
+  annotate(geom = "text", x = 16, y = 2, label = "Highest Percentage Quartile \n on Probation", hjust = "left") +
+  coord_flip() +
+  geom_hline(yintercept=c(1.4), linetype="dashed", size = .8) +
+  scale_y_continuous(labels=function(x) paste0(x,"%")) +
+  scale_fill_manual(values=my_palette, 
+                    labels=c("Prison", "Confined to Jail", "Jail Supervision", "Probation"), 
+                    name = "Supervision Type") +
+  labs(x="", y="", 
+       title="Percent of State Population on Probation and in Jail in 2018",
+       subtitle = "Ordered by State Population Size") +
+  theme_classic() +
+  theme(plot.title = element_text(size= 15, hjust=0.5, color = "black", margin = margin(b = 0.3, t = 1, l = 2, unit = "cm")),
+        plot.subtitle = element_text(size= 12, hjust=0.5, color = "black"),
+        legend.position = c(.8, .6))
+
+########## Partisanship Linegraph ########3
+swing_sup <- select_table %>% filter(STATE_NAME != "Georgia" & STATE_NAME != "Michigan") %>%
+  group_by(SWING, YEAR) %>% 
+  summarize(SUM_CONFPOP = sum(TCONFPOP, na.rm = TRUE), SUM_TOTBEG = sum(TOTBEG, na.rm = TRUE), SUM_NCONPOP = sum(TNCONPOP, na.rm = TRUE),SUM_PRISON = sum(PRISON, na.rm = TRUE), SUM_POP = sum(POP, na.rm = TRUE)) %>%
+  mutate(AVG_PERC_SUP = ((SUM_CONFPOP + SUM_TOTBEG + SUM_NCONPOP + SUM_PRISON)  / SUM_POP * 100)) %>% ungroup() %>% drop_na()
+
+ggplot(swing_sup, aes(x=YEAR, y=AVG_PERC_SUP, group=SWING, color=SWING)) +
+  geom_line(size=1.2) +
+  geom_label(color = "purple", fill = "#FAD6FF", x = 3.5, y = .8, label = "Only one state (Arkansas) \n changed partisan control \n between 2010 and 2018 \n from Democratic 2010 - 2012 \n Divided 2013 - 2014 \n and Republican 2015 - 2018") +
+  annotate(geom = "curve", color = "purple", x = 1, y = 1.05, xend = 1, yend = 1.52, 
+           curvature = -.3, arrow = arrow(length = unit(2, "mm"))) +
+  scale_color_manual(values=c("blue", "Orange", "Red", "Purple")) +
+  guides(color = guide_legend(title = "State Gov Partisanship")) +
+  theme_classic() +
+  labs(y = "", 
+       x = "", 
+       title = "Percent of US Population on Probation or Incarcerated \n Based on State Government Pastisanship") +
+  scale_y_continuous(labels=function(x) paste0(x,"%"), limits = c(0,2)) +
+  theme(plot.title = element_text(size= 15, hjust=0.5, color = "black", margin = margin(b = -0.1, t = 0.5, l=2, unit = "cm")))
+
+########### Partisanship Boxplot ##########
+select_table %>% filter(YEAR == 2018) %>% drop_na() %>%
+  ggplot(aes(x=SWING, y=PROP_SUP, fill=SWING)) +
+  geom_boxplot() +
+  geom_label(label = "GA", x=3.15, y= 4.55, fill="white") +
+  theme_classic() +
+  scale_y_continuous(labels=function(x) paste0(x,"%")) +
+  scale_fill_manual(values=c("blue", "Orange", "Red", "Purple")) +
+  labs(x="", y="", 
+       title="Distribution of State Population on Probation or in Jail \n Based on State Government Control") +
+  theme_classic() +
+  theme(plot.title = element_text(size= 15, hjust=0.5, color = "black", margin = margin(b = 0.3, t = 1, l = 2, unit = "cm")),
+        plot.subtitle = element_text(size= 12, hjust=0.5, color = "black"),
+        legend.position = "none")
+
+########### Probation Change Map ########
+select_table_change <- select_table %>%
+  select(1:6) %>%
+  filter(YEAR == 2010 | YEAR == 2018) %>%
+  pivot_wider(names_from = YEAR, values_from = c(POP, TOTBEG)) %>%
+  mutate(CHANGE = (TOTBEG_2018 - TOTBEG_2010) / TOTBEG_2010 *100) %>%
+  mutate(DIRECTION = ifelse(CHANGE < 0, "decrease", "increase"), 
+         STATE_NAME = str_to_lower(population1$state[1:51]))
+
+state_map <- map_data("state")
+
+state_map <- left_join(state_map, select_table_change, by = c("region" = "STATE_NAME"))
+
+ggplot(state_map, aes(x=long, y=lat, group=group, fill=CHANGE)) +
+  geom_polygon(color="black") +
+  scale_fill_gradient2(low="#123EF0", mid="white", high="#EB7D00", name= "% change") +
+  coord_map() +
+  labs(title = "Change in State Probation Populations from 2010-2018", 
+       subtitle = "as a percent of each state's probation population in 2010") +
+  theme_void() +
+  theme(
+    text = element_text(color = "black"),
+    legend.position = c(0.9, 0.3),
+    plot.title = element_text(hjust = 0.1),
+    plot.subtitle = element_text(hjust = 0.1),
+    plot.caption = element_text(hjust = 0.9))
+
+################## Idaho Incarceration Linegraph #####
+Idaho_df_small <- select_table %>% filter(STATE_NAME == "Idaho") %>%
+  mutate(PROP_PRISON = PRISON / POP * 100, PROP_CONFPOP = TCONFPOP / POP * 100, PROP_NCONPOP = TNCONPOP / POP * 100) %>%
+  gather(key = "TYPE", value = "PROP_SUPERVISION", 12:15)
+
+US_avg_sup <- select_table
+US_avg_sup$TOTBEG <- as.numeric(US_avg_sup$TOTBEG)
+US_avg_sup[US_avg_sup$STATE_ABBR == "GA" & US_avg_sup$YEAR == 2016, "TOTBEG"] <- ((US_avg_sup[US_avg_sup$STATE_ABBR == "GA" & US_avg_sup$YEAR == 2015, "TOTBEG"] + US_avg_sup[US_avg_sup$STATE_ABBR == "GA" & US_avg_sup$YEAR == 2017, "TOTBEG"]) / 2)
+US_avg_sup[US_avg_sup$STATE_ABBR == "MI" & US_avg_sup$YEAR == 2016, "TOTBEG"] <- ((US_avg_sup[US_avg_sup$STATE_ABBR == "MI" & US_avg_sup$YEAR == 2015, "TOTBEG"] + US_avg_sup[US_avg_sup$STATE_ABBR == "MI" & US_avg_sup$YEAR == 2017, "TOTBEG"]) / 2)
+US_avg_sup <- US_avg_sup %>% group_by(YEAR) %>% 
+  summarize(POP_SUM = sum(POP), TOTBEG_SUM = sum(TOTBEG, na.rm=TRUE), TCONFPOP_SUM = sum(TCONFPOP, na.rm = TRUE), TNCONPOP_SUM = sum(TNCONPOP, na.rm = TRUE), PRISON_SUM = sum(PRISON, na.rm = TRUE)) %>%
+  mutate(US_AVG_SUP = (TOTBEG_SUM + TCONFPOP_SUM + TNCONPOP_SUM + PRISON_SUM) / POP_SUM * 100, GROUP = rep("United States", 9))
+
+my_palette <- rev(mako(5))[c(-1,-8)]
+ggplot() +
+  geom_area(data=Idaho_df_small, aes(x=YEAR, y=PROP_SUPERVISION, group=TYPE, fill=TYPE)) +
+  geom_line(data = US_avg_sup, aes(x=YEAR, y = US_AVG_SUP, group = GROUP), size = 1, linetype="dashed", color="white") +
+  annotate(geom = "text", x = 4, y = 1.4, label = "US Average (Probation + Incarceration)", hjust = "left", color="white") +
+  scale_y_continuous(labels=function(x) paste0(x,"%")) +
+  scale_fill_manual(values=my_palette, 
+                    labels=c("Prison", "Confined to Jail", "Jail Supervision", "Probation"), 
+                    name = "Supervision Type") +
+  labs(x="", y="", 
+       title="Change in Probation and Jail Rate in Idaho from 2010 - 2018") +
+  theme_classic() +
+  theme(plot.title = element_text(size= 15, hjust=0.5, color = "black", margin = margin(b = 0.3, t = 1, l = 2, unit = "cm")),
+        plot.subtitle = element_text(size= 12, hjust=0.5, color = "black"))
+
+############# Idaho Datatable ##########
+temp1 <- stategov_unique %>% filter(start_column == "Idaho") %>% select(starts_with("state")) %>% t()
+temp2 <- select_table %>% filter(STATE_NAME == "Idaho") %>% select(POP, TOTBEG, TCONFPOP, TNCONPOP, PRISON) %>% ceiling()
+temp2$POP <- prettyNum(temp2$POP, big.mark = ",", scientific=FALSE)
+temp2$TOTBEG <- prettyNum(temp2$TOTBEG, big.mark = ",", scientific=FALSE)
+temp2$TCONFPOP <- prettyNum(temp2$TCONFPOP, big.mark = ",", scientific=FALSE)
+temp2$TNCONPOP <- prettyNum(temp2$TNCONPOP, big.mark = ",", scientific=FALSE)
+temp2$PRISON <- prettyNum(temp2$PRISON, big.mark = ",", scientific=FALSE)
+Idaho_datatable <- t(cbind(temp1, temp2))
+colnames(Idaho_datatable) <- gsub("State..Control_", "", colnames(Idaho_datatable))
+rownames(Idaho_datatable) <- c("State Gov't Control", "State Population", "Probationers", "In Jail", "Jail Supervision", "State Prison")
+
+datatable(Idaho_datatable, options = list(columnDefs = list(list(className = 'dt-right', targets = 1:9))))
+
+########## Georgia Incarceration Linegraph #######3
+Georgia_df_small <- select_table %>% filter(STATE_NAME == "Georgia") %>%
+  mutate(PROP_PRISON = PRISON / POP * 100, PROP_CONFPOP = TCONFPOP / POP * 100, PROP_NCONPOP = TNCONPOP / POP * 100) %>%
+  gather(key = "TYPE", value = "PROP_SUPERVISION", 12:15)
+
+US_avg_sup <- select_table
+US_avg_sup$TOTBEG <- as.numeric(US_avg_sup$TOTBEG)
+US_avg_sup[US_avg_sup$STATE_ABBR == "GA" & US_avg_sup$YEAR == 2016, "TOTBEG"] <- ((US_avg_sup[US_avg_sup$STATE_ABBR == "GA" & US_avg_sup$YEAR == 2015, "TOTBEG"] + US_avg_sup[US_avg_sup$STATE_ABBR == "GA" & US_avg_sup$YEAR == 2017, "TOTBEG"]) / 2)
+US_avg_sup[US_avg_sup$STATE_ABBR == "MI" & US_avg_sup$YEAR == 2016, "TOTBEG"] <- ((US_avg_sup[US_avg_sup$STATE_ABBR == "MI" & US_avg_sup$YEAR == 2015, "TOTBEG"] + US_avg_sup[US_avg_sup$STATE_ABBR == "MI" & US_avg_sup$YEAR == 2017, "TOTBEG"]) / 2)
+US_avg_sup <- US_avg_sup %>% group_by(YEAR) %>% 
+  summarize(POP_SUM = sum(POP), TOTBEG_SUM = sum(TOTBEG, na.rm=TRUE), TCONFPOP_SUM = sum(TCONFPOP, na.rm = TRUE), TNCONPOP_SUM = sum(TNCONPOP, na.rm = TRUE), PRISON_SUM = sum(PRISON, na.rm = TRUE)) %>%
+  mutate(US_AVG_SUP = (TOTBEG_SUM + TCONFPOP_SUM + TNCONPOP_SUM + PRISON_SUM) / POP_SUM * 100, GROUP = rep("United States", 9))
+
+my_palette <- rev(mako(5))[c(-1,-8)]
+ggplot() +
+  geom_area(data=Georgia_df_small, aes(x=YEAR, y=PROP_SUPERVISION, group=TYPE, fill=TYPE)) +
+  geom_line(data = US_avg_sup, aes(x=YEAR, y = US_AVG_SUP, group = GROUP), size = 1, linetype="dashed", color="white") +
+  annotate(geom = "text", x = 4, y = 1.5, label = "US Average (Probation + Incarceration)", hjust = "left", color="white") +
+  scale_y_continuous(labels=function(x) paste0(x,"%")) +
+  scale_fill_manual(values=my_palette, 
+                    labels=c("Prison", "Confined to Jail", "Jail Supervision", "Probation"), 
+                    name = "Supervision Type") +
+  labs(x="", y="", 
+       title="Change in Probation and Jail Rate in Idaho from 2010 - 2018") +
+  theme_classic() +
+  theme(plot.title = element_text(size= 15, hjust=0.5, color = "black", margin = margin(b = 0.3, t = 1, l = 2, unit = "cm")),
+        plot.subtitle = element_text(size= 12, hjust=0.5, color = "black"))
+
+######### Georgia Offenses Donut #########
+Georgia_df <- filter(complete_table, STATE_NAME == "Georgia")
+Georgia_df_donut <- Georgia_df %>% 
+  select(STATE_NAME, starts_with("TOTBEG"), starts_with("TOTOFF"), starts_with("DMVIOL"),
+         starts_with("SXASLT"), starts_with("OTHVIOL"), starts_with("PROPERTY"),
+         starts_with("DRUG"), starts_with("DUI"), starts_with("TRAF"),
+         starts_with("OTHOFF"), starts_with("OFFUNK")) %>%
+  pivot_longer(-c("STATE_NAME"), names_to = c(".value", "YEAR"), names_sep="_")
+colnames(Georgia_df_donut) <- c("State_name", "Year", "TotalProb", "TotalOff", 
+                                "DV", "Sexual Assualt", "Other Violent", 
+                                "Property Crime", "Drug Crime", "DUI", "Traffic", "Other Crime", "Unknown")
+Georgia_df_donut <- Georgia_df_donut %>% filter(Year == "2018") %>%
+  gather(key = "Subtype", value = "Crime", 5:13) %>%
+  cbind(Offenses = c(rep("Violent", 3), rep("Nonviolent", 4), "Other", "Unknown")) %>%
+  filter(Offenses != "Unknown" & Subtype != "DUI")
+Georgia_df_donut$Offenses <- factor(Georgia_df_donut$Offenses)
+Georgia_df_donut$Subtype <- factor(Georgia_df_donut$Subtype)
+
+PieDonut(Georgia_df_donut, aes(Offenses, Subtype, count=Crime), 
+         ratioByGroup = FALSE, r0 = .3, r1 = .8, title = "Probationers Most Serious Offense in 2018", labelpositionThreshold = 0.05)
+
+########### Georgia Datatable ########
+temp1 <- stategov_unique %>% filter(start_column == "Georgia") %>% select(starts_with("state")) %>% t()
+temp2 <- select_table %>% filter(STATE_NAME == "Georgia") %>% select(POP, TOTBEG, TCONFPOP, TNCONPOP, PRISON) %>% ceiling()
+temp2$POP <- prettyNum(temp2$POP, big.mark = ",", scientific=FALSE)
+temp2$TOTBEG <- prettyNum(temp2$TOTBEG, big.mark = ",", scientific=FALSE)
+temp2$TCONFPOP <- prettyNum(temp2$TCONFPOP, big.mark = ",", scientific=FALSE)
+temp2$TNCONPOP <- prettyNum(temp2$TNCONPOP, big.mark = ",", scientific=FALSE)
+temp2$PRISON <- prettyNum(temp2$PRISON, big.mark = ",", scientific=FALSE)
+Georgia_datatable <- t(cbind(temp1, temp2))
+colnames(Georgia_datatable) <- gsub("State..Control_", "", colnames(Georgia_datatable))
+rownames(Georgia_datatable) <- c("State Gov't Control", "State Population", "Probationers", "In Jail", "Jail Supervision", "State Prison")
+
+datatable(Georgia_datatable, options = list(columnDefs = list(list(className = 'dt-right', targets = 1:9))))
+
+######## Arkansas Incarceration Linegraph ########
+Arkansas_df_small <- select_table %>% filter(STATE_NAME == "Arkansas") %>%
+  mutate(PROP_PRISON = PRISON / POP * 100, PROP_CONFPOP = TCONFPOP / POP * 100, PROP_NCONPOP = TNCONPOP / POP * 100) %>%
+  gather(key = "TYPE", value = "PROP_SUPERVISION", 12:15)
+
+US_avg_sup <- select_table
+US_avg_sup$TOTBEG <- as.numeric(US_avg_sup$TOTBEG)
+US_avg_sup[US_avg_sup$STATE_ABBR == "GA" & US_avg_sup$YEAR == 2016, "TOTBEG"] <- ((US_avg_sup[US_avg_sup$STATE_ABBR == "GA" & US_avg_sup$YEAR == 2015, "TOTBEG"] + US_avg_sup[US_avg_sup$STATE_ABBR == "GA" & US_avg_sup$YEAR == 2017, "TOTBEG"]) / 2)
+US_avg_sup[US_avg_sup$STATE_ABBR == "MI" & US_avg_sup$YEAR == 2016, "TOTBEG"] <- ((US_avg_sup[US_avg_sup$STATE_ABBR == "MI" & US_avg_sup$YEAR == 2015, "TOTBEG"] + US_avg_sup[US_avg_sup$STATE_ABBR == "MI" & US_avg_sup$YEAR == 2017, "TOTBEG"]) / 2)
+US_avg_sup <- US_avg_sup %>% group_by(YEAR) %>% 
+  summarize(POP_SUM = sum(POP), TOTBEG_SUM = sum(TOTBEG, na.rm=TRUE), TCONFPOP_SUM = sum(TCONFPOP, na.rm = TRUE), TNCONPOP_SUM = sum(TNCONPOP, na.rm = TRUE), PRISON_SUM = sum(PRISON, na.rm = TRUE)) %>%
+  mutate(US_AVG_SUP = (TOTBEG_SUM + TCONFPOP_SUM + TNCONPOP_SUM + PRISON_SUM) / POP_SUM * 100, GROUP = rep("United States", 9))
+
+my_palette <- rev(mako(5))[c(-1,-8)]
+ggplot() +
+  geom_area(data=Arkansas_df_small, aes(x=YEAR, y=PROP_SUPERVISION, group=TYPE, fill=TYPE)) +
+  geom_line(data = US_avg_sup, aes(x=YEAR, y = US_AVG_SUP, group = GROUP), size = 1, linetype="dashed", color="black") +
+  annotate(geom = "text", x = 4, y = 1.7, label = "US Average (Probation + Incarceration)", hjust = "left", color="black") +
+  scale_y_continuous(labels=function(x) paste0(x,"%")) +
+  scale_fill_manual(values=my_palette, 
+                    labels=c("Prison", "Confined to Jail", "Jail Supervision", "Probation"), 
+                    name = "Supervision Type") +
+  labs(x="", y="", 
+       title="Change in Probation and Jail Rate in Idaho from 2010 - 2018") +
+  theme_classic() +
+  theme(plot.title = element_text(size= 15, hjust=0.5, color = "black", margin = margin(b = 0.3, t = 1, l = 2, unit = "cm")),
+        plot.subtitle = element_text(size= 12, hjust=0.5, color = "black"))
+
+############### Arkansas Offenses Donuts ##########
+Arkansas_df <- filter(complete_table, STATE_NAME == "Arkansas")
+Arkansas_df_donut_2010 <- Arkansas_df %>% 
+  select(STATE_NAME, starts_with("TOTBEG"), starts_with("TOTOFF"), starts_with("DMVIOL"),
+         starts_with("SXASLT"), starts_with("OTHVIOL"), starts_with("PROPERTY"),
+         starts_with("DRUG"), starts_with("DUI"), starts_with("TRAF"),
+         starts_with("OTHOFF"), starts_with("OFFUNK")) %>%
+  pivot_longer(-c("STATE_NAME"), names_to = c(".value", "YEAR"), names_sep="_")
+colnames(Arkansas_df_donut_2010) <- c("State_name", "Year", "TotalProb", "TotalOff", 
+                                      "DV", "Sexual Assualt", "Other Violent", 
+                                      "Property Crime", "Drug Crime", "DUI", "Traffic", "Other Crime", "Unknown")
+Arkansas_df_donut_2010 <- Arkansas_df_donut_2010 %>% filter(Year == "2010") %>%
+  gather(key = "Subtype", value = "Crime", 5:13) %>%
+  cbind(Offenses = c(rep("Violent", 3), rep("Nonviolent", 4), rep("Other",2))) %>%
+  filter(Offenses != "Unknown" & Subtype != "DUI" & Subtype != "Traffic")
+Arkansas_df_donut_2010$Offenses <- factor(Arkansas_df_donut_2010$Offenses)
+Arkansas_df_donut_2010$Subtype <- factor(Arkansas_df_donut_2010$Subtype)
+
+PieDonut(Arkansas_df_donut_2010, aes(Offenses, Subtype, count=Crime), 
+         ratioByGroup = FALSE, r0 = .3, r1 = .8, title = "Probationers Most Serious Offense in 2010", labelpositionThreshold = 0.05)
+
+Arkansas_df <- filter(complete_table, STATE_NAME == "Arkansas")
+Arkansas_df_donut_2018 <- Arkansas_df %>% 
+  select(STATE_NAME, starts_with("TOTBEG"), starts_with("TOTOFF"), starts_with("DMVIOL"),
+         starts_with("SXASLT"), starts_with("OTHVIOL"), starts_with("PROPERTY"),
+         starts_with("DRUG"), starts_with("DUI"), starts_with("TRAF"),
+         starts_with("OTHOFF"), starts_with("OFFUNK")) %>%
+  pivot_longer(-c("STATE_NAME"), names_to = c(".value", "YEAR"), names_sep="_")
+colnames(Arkansas_df_donut_2018) <- c("State_name", "Year", "TotalProb", "TotalOff", 
+                                      "DV", "Sexual Assualt", "Other Violent", 
+                                      "Property Crime", "Drug Crime", "DUI", "Traffic", "Other Crime", "Unknown")
+Arkansas_df_donut_2018 <- Arkansas_df_donut_2018 %>% filter(Year == "2018") %>%
+  gather(key = "Subtype", value = "Crime", 5:13) %>%
+  cbind(Offenses = c(rep("Violent", 3), rep("Nonviolent", 4), rep("Other",2))) %>%
+  filter(Subtype != "DUI" & Subtype != "Traffic" & Subtype != "Unknown")
+Arkansas_df_donut_2018$Offenses <- factor(Arkansas_df_donut_2018$Offenses)
+Arkansas_df_donut_2018$Subtype <- factor(Arkansas_df_donut_2018$Subtype)
+
+my_palette <- rev(mako(10))[c(-1,-8)]
+PieDonut(Arkansas_df_donut_2018, aes(Offenses, Subtype, count=Crime), 
+         ratioByGroup = FALSE, r0 = .3, r1 = .8, title = "Probationers Most Serious Offense in 2018", labelpositionThreshold = 0.05)
