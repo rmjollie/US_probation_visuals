@@ -1,7 +1,6 @@
 # US_probation_visuals
 
 This project creates visuals to explore probation rates in the United States and differences across US states from 2010 to 2018. Data on other years going back as far 1994 are publically available through [ICPRS website](https://www.icpsr.umich.edu/web/pages/ICPSR/index.html), though the survey methodology has changed over time and the Annual Probation Survey as used in this project started in 1999.
-https://rpubs.com/rmjollie/984808
 
 ## probation_rates_tabset.Rmd
 This R markdown file contains the full project and produces an HTML flexdashboard containing visuals and text
