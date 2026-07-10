@@ -1,0 +1,3 @@
+Place the 9 ICPSR Annual Survey of Jails files here, named:
+31261-0001-Data.tsv (2010) ... 37392-0001-Data.tsv (2018)
+See the main README for the full year-to-file mapping and source link.

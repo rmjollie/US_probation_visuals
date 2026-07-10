@@ -1,0 +1,275 @@
+---
+title: "Probation Rates in the United States"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+    theme: yeti
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(gghighlight)
+library(viridis)
+library(webr)
+library(DT)
+library(here)
+
+# All cleaning happens in R/01_clean_data.R (run separately, writes to
+# data-clean/); all figure code lives in R/02_figures_national.R and
+# R/03_figures_case_study.R. This report only loads clean data and calls
+# those functions -- it does not re-derive anything from raw data.
+source(here("R", "00_helpers.R"))
+source(here("R", "02_figures_national.R"))
+source(here("R", "03_figures_case_study.R"))
+
+select_table    <- read_rds(here("data-clean", "select_table.rds"))
+complete_table  <- read_rds(here("data-clean", "complete_table.rds"))
+stategov_unique <- read_rds(here("data-clean", "stategov_unique.rds"))
+state_names     <- read_rds(here("data-clean", "state_names_ordered.rds"))
+geo_path        <- here("data-raw", "geo", "us_states_hexgrid.geojson")
+```
+
+Probation {data-orientation=columns}
+===================================== 
+
+Column
+-------       
+### Probation by State
+
+```{r, fig.width=7, warning=FALSE}
+make_hexbin_map(select_table, geo_path)
+```
+
+### Introduction
+
+The United States incarcerates our citizens at a higher rate than every other country in the world and in recent years the US criminal justice system has received a lot of attention for how reliant we are on extreme punishments, like incarceration as a crime deterrent. While incarceration tends to be at the very center of the discussion around criminal justice reform because it has the most extreme outcomes, less attention is given to the number of individuals under “community supervision” - an umbrella term for all people who are not literally held behind bars, but who are still monitored by criminal justice officers. Probation is the most common form of community supervision.
+
+This exploration of probation data in the United States will seek to answer the following question:
+
+1) How have probation rates in the US changed over time (specifically from 2010 to 2018 - the most recent year for which data is publicly available)?
+
+2) Do state characteristics such as population size and partisan control influence probation rates?
+
+3) What states would be best to look at more closely to investigate policy changes that have been effective or ineffective at lowering overreliance on incarceration and community supervision?
+
+Column
+-------    
+### Probation by Year
+    
+```{r, fig.height=8, fig.width=7, warning=FALSE, message=FALSE}
+make_probation_linegraph(select_table)
+```    
+
+Population {data-orientation=columns}
+=================
+
+Column
+-------
+```{r}
+
+```
+### Sources and Defintions
+
+Definitions:
+
+Probation: A court-ordered period of correctional supervision in the community, generally as an alternative to incarceration. Usually probationers will report to an officer of the law on a regular basis and may have restriction, such as where they are allowed to travel, or additional rules, such as a requirement to be employed.
+
+Jail: Incarceration for relatively minor crimes (compared to those that would result in a prison sentence) and individuals awaiting trial who cannot afford or do not receive bail. The determination as to whether an individual is incarcerated in jail or prison is often made by a judge - or determined by state law - and many jails are not intended to hold people longer than 1 year.
+
+Jail Supervision: Included individuals awaiting trial or sentenced to jail who are not physical held in jail. They may use GPS monitoring or be on house arrest.
+
+Prison: Incarceration for relatively serious crimes (compared to those that would result in a jail sentence). Most individual sentenced to prison will be incarcerated for a period longer than 1 year and are found guilt of a felony as opposed to a misdemeanor. The determination as to what is a misdemeanor and what is a felony is determined by state law and in some cases judges may have discretion to convert a felony to a misdemeanor or vice versa.
+
+Sources:
+
+1) U.S. Census Bureau, Population Division, Table 1. Annual Estimates of the Resident Population for the United States, Regions, States, and Puerto Rico: April 1, 2010 to July 1, 2019 (NST-EST2019-01), released December 2019
+
+2) United States Department of Justice. Office of Justice Programs. Bureau of Justice Statistics. Annual Probation Survey, 2010 - 2018.
+
+3) United States Department of Justice. Office of Justice Programs. Bureau of Justice Statistics. Annual Survey of Jails, 2010 - 2018.
+
+4) United States Department of Justice. Office of Justice Programs. Bureau of Justice Statistics.Corrections Statistical Analysis Tool (CSAT) - Prisoners, 2010 - 2018.
+
+5) National Conference of State Legislatures. Legislative Partisan Composition Tables, 2010 - 2018
+
+Column {.tabset}
+-------
+### Probation and Jail by Population
+
+```{r, fig.height=9, fig.width=7, warning=FALSE}
+make_incarceration_bargraph(select_table)
+```
+
+```{r}
+
+```
+### Explanatory Note {data-height=300}
+
+Does state population size influence probation rates?
+
+In the visual above, the states are ordered by total state population from greatest to least and the length of the bar indicates the percent of each state that is on probation. 
+The states that have a probation percentage which falls in the highest quartile (above 1.4% of their population on probation) are scattered across the chart, so it does not appear that population size is a strongly determining factor for probation rate.
+
+A concern when looking at probation numbers is that states reporting lower probation rates may actually have higher rates of incarcerated individuals and this is true for some states. For example, New York appears to have a higher probation rate than Connecticut and West Virginia, but when jail incarceration rates are added to the graph, New York overall as a lower rate of these kinds of criminal supervision.
+
+Note 1: The states that did not report jail incarceration rates, do not have state jails.
+Note 2: This visual is still not the complete picture because state prison and parole number are not included here
+
+Partisanship {data-orientation=columns}
+===================================== 
+
+Column
+-------    
+### State Partisan Control by Year
+    
+```{r, fig.height=8, fig.width=7, message=FALSE}
+make_partisanship_linegraph(select_table)
+```    
+
+Column
+-------       
+### Distribution by State Partisan Control
+
+```{r, fig.width=7}
+make_partisanship_boxplot(select_table)
+```
+
+```{r}
+
+```
+
+### Explanatory Note
+
+The visual on the left shows that in general, regardless of state partisan control, overall there is a downward trend in the percentage of the US population in jail and on probation.
+This could be the result of two things - 1) An overall reduction in crime in the US, 2) a move away from criminal punishments like incarceration and community supervision.
+
+This visual also shows that Republican states consistently have a high proportion of their population on probation and in jail (even with Georgia removed from the data) than states with divided governments and states with consistent democrat control have the lowest rates, but overall the difference is less that half a percent.
+
+The box plot above shows that the Republican states and Divided states much more variance in probation and jail rates than Democrat controlled states.
+
+Operational Definitions:
+
+State partisan control was determined by looking at the which party held the majority in the state legislature and which party the governor belonged to for each year.
+
+Republican/Democrat: Both the state legislature majority and the governor were of the same respective party for 7 or more of the year between 2010 and 2018. 
+
+Swing: If in any year the state legislature majority and governor were Republican and in a different year, Democratic
+
+Divided: The state legislature majority and the governor were from different parties for 4 or more years
+
+Note: Georgia and Michigan were excluded from the data in line graph because they did not report probation data for 2016 and Georgia's percentage is so high that it artificially skewed the Republican line low for 2016 alone
+
+Case Study: Idaho {data-orientation=rows}
+=================
+
+### Note about Idaho
+Idaho is an interesting state to look at more closely because of how high their probation rate was in 2010 and how significantly those rates changed over the course of the following two years - dropping Idaho from the state with the second highest probation rate down to 4th. In that same time period there was very little change in incarceration rates, so those probationers were not just reallocated to incarceration because of probation violations.
+
+Further investigation would be needed to identify the causes of this sudden decrease. Idaho did not sign any criminal justice reform policies in recent decades until 2014 (Senate Bill 1357) which aimed to address timely release of prisoners and reduce recidivism by reducing the number of probationers who returned to prison on technical violations.
+
+Row {.tabset}
+-------
+### Change in Probation
+    
+```{r}
+make_change_map(select_table, state_names)
+```
+
+### Idaho vs US Average
+
+```{r, fig.width=7}
+make_state_area_chart(select_table, "Idaho", line_color = "white", label_y = 1.4)
+```
+
+### Idaho Datatable
+```{r}
+make_state_datatable(stategov_unique, select_table, "Idaho")
+```
+
+Case Study: Georgia {data-orientation=rows}
+=================
+
+### Note about Georgia
+
+Georgia is an interesting case study because of how high their rate of probation is relative to every other state. The graph shows that, like the United States probation rate on average, Georgia has also seen a decrease in probation rates in recent years, but not very significantly.
+
+Georgia's probation system may have unique characteristics that would make it an interesting study. Some of these policies that set Georgia as an outsider might be that Georgia has no caps on how long probation sentences can be. Additionally, Georgia has a type of probation called "Pay Only Probation" in which someone would be placed on probation for failing to pay court fees.
+
+To investigate the pay for probation idea, the second chart looks at probationers "Most Serious Offense," which is a term defined by the Bureau of Justice Statistics where violent crimes are considered more serious than nonviolent crimes and felonies are more serious than misdemeanors.
+This visual looks at the data which was reported and excludes missing or unknown answers. Missing and unknowns made up 52% of the reported data, so it's not clear where "Pay Only Probationers" would have been reported in the survey unfortunately.
+
+Row {.tabset}
+-------
+### Georgia vs US Average
+    
+```{r, fig.width=7, warning=FALSE}
+make_state_area_chart(select_table, "Georgia", line_color = "white", label_y = 1.5)
+```
+
+### Most Serious Offenses
+
+```{r, fig.height=6, warning=FALSE}
+make_state_offense_donut(complete_table, "Georgia", 2018)
+```
+
+### Georgia Datatable
+```{r}
+make_state_datatable(stategov_unique, select_table, "Georgia")
+```
+
+Case Study: Arkansas {data-orientation=rows}
+=================
+
+### Note about Arkansas
+
+Arkansas is an interesting case study to investigate further because they are the only state between 2010 and 2018 which changed partisan control and stand out as one of the states which has not seen a decrease in probation (or probation + incarceration) rates. 
+
+The first visual shows that Arkansas was consistently below the US average rate until 2018 because the US average has been decreasing over time, but Arkansas' rate of probation and incarceration has remained just about constant.
+
+The last visuals show that not only have the rates of probation remained steady from 2010 to 2018, but the types of crimes are also consistent. 
+
+Row {.tabset}
+-------
+### Arkansas vs US Average
+```{r, fig.width=7}
+make_state_area_chart(select_table, "Arkansas", line_color = "black", label_y = 1.7)
+```
+
+### Most Serious Offenses 2010
+    
+```{r, fig.height=6}
+make_state_offense_donut(complete_table, "Arkansas", 2010, exclude_subtypes = c("DUI", "Traffic"))
+```
+
+### Most Serious Offenses 2018
+
+```{r, fig.height=6}
+make_state_offense_donut(complete_table, "Arkansas", 2018, exclude_subtypes = c("DUI", "Traffic"))
+```
+
+Conclusion
+=================
+1) How have probation rates in the US changed over time (specifically from 2010 to 2018 - the most recent year for which data is publicly available)?
+
+Overall, the United States has seen a slight decline in probation rates which were NOT offset by incarceration rates between 2010 and 2018. This trend can be seen in states regardless of state partisan control and in states with varying population sizes
+
+
+2) Do state characteristics such as population size and partisan control influence probation rates?
+
+If state population size is correlated with probation rates, the correlation is likely small and there are many exceptions. Many of the states with the highest probation rates are not even in the top 50% of most populated states.
+Partisan control may have some influence over probation rates. Overall, Republican controlled states have higher probation rates than Divided and Democrat controlled states. However, Republican controlled states have a lot more variance that Democrat controlled states and it may be that some of the states with the highest rates of probation just so happen to be Republican controlled. More investigation into specific policy differences would be important.
+
+
+3) What states would be best to look at more closely to investigate policy changes that have been effective or ineffective at lowering over reliance on incarceration and community supervision?
+
+A few states would make interesting case studies for further investigation. Idaho because of their significant and relatively fast decrease. Georgia because of how high their probation rate is relative to every other state. Arkansas because of their unique position as the only state to change partisan control.
+
+Future Projects:
+This project took a very broad look at probation rates in the United States and a few important number were left out of the equation. 
+There are other types of criminal supervision beyond incarceration and probation - mainly parole which was excluded from this dataset because parole and probation terms can happen simultaneously and I didn't have the data to show how much overlap there is. In the future, I would add in all of the forms of criminal supervision that exist to ensure that people aren't just being shifted from one form of criminal supervision to another
+
+Also, it's difficult to know based on rate of criminal supervision if policy changes are making the difference or if crime is overall just decreasing, so I would compare incarceration and community supervision rates to crime rates
+
+Lastly, I might narrow in on a specific state and actually compile a list of any criminal justice related policies past by both federal and state legislature over a longer time period. Or otherwise I would look at a specific polciy idea (like the implementation of drug courts) and see how it affected incarceration and community supervision rates accross the US

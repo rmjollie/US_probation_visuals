@@ -1,0 +1,13 @@
+Place "us_states_hexgrid.geojson" here (used by make_hexbin_map() in
+R/02_figures_national.R, via the geojsonio package).
+
+Note: the original project folder contained a "us_states_hexgrid.shp" file,
+but the code actually reads a .geojson of the same base name, and only the
+.shp component was present (a shapefile needs at least .shp/.shx/.dbf
+together to be readable). These are two different formats representing the
+same hexbin US map, both commonly sourced from a hex-cartogram project such
+as https://github.com/rgdonohue/hexbin-shapefiles or the R packages that
+distribute it. Grab whichever format you have a complete set of, or
+re-export the shapefile to GeoJSON, and update the `geo_path` in
+report/probation_rates_tabset.Rmd and R/04_save_figures.R to match if you
+keep the .shp version instead.
