@@ -26,8 +26,8 @@ data-raw/          Original, untouched source files (see Data Sources below)
   geo/                US hex-cartogram geometry for the state map
 
 data-clean/         Tidy, joined tables produced by R/01_clean_data.R.
-                    Not tracked in version control -- regenerate by running
-                    the R/ scripts in order (see Reproducing below).
+                    Regenerate by running the R/ scripts in order
+                    (see Reproducing below).
 
 R/                  Pipeline scripts, run in numeric order
   00_helpers.R          Shared helper functions (bind_tables, pretty_count)
@@ -46,8 +46,8 @@ report/             The flexdashboard report itself
 
 ## Reproducing this project
 
-1. Add the raw data files to each `data-raw/<source>/` folder (see the
-   `PLACE_FILES_HERE.txt` note in each folder, and Data Sources below).
+1. Download data from `data-raw/<source>/` folder or retrieve from source 
+  (see the `PLACE_FILES_HERE.txt` note in each folder and Data Sources below).
 2. Run `R/01_clean_data.R` to build `data-clean/`.
 3. Either:
    - Run `R/04_save_figures.R` to write every figure to `figs/` as a `.png`, or
